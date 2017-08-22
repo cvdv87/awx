@@ -20,7 +20,7 @@ var messages = require('./messages.js');
 var svg_crowbar = require('../vendor/svg-crowbar.js');
 var ReconnectingWebSocket = require('reconnectingwebsocket');
 
-var NetworkUIController = function($scope, $document, $location, $window) {
+var NetworkUIController = function($scope, $document, $location, $window, $http) {
 
   window.scope = $scope;
   var i = 0;
@@ -30,6 +30,8 @@ var NetworkUIController = function($scope, $document, $location, $window) {
 
   $scope.topology_id = $location.search().topology_id || 0;
   // Create a web socket to connect to the backend server
+  //
+  $scope.inventory_id = $location.search().inventory_id || 0;
 
   if (!$scope.disconnected) {
   $scope.control_socket = new ReconnectingWebSocket("ws://" + window.location.host + "/network_ui/topology?topology_id=" + $scope.topology_id,
@@ -139,19 +141,26 @@ var NetworkUIController = function($scope, $document, $location, $window) {
 
   //Inventory Toolbox Setup
   $scope.inventory_toolbox = new models.ToolBox(0, 'Inventory', 'device', 10, 200, 150, $scope.graph.height - 200 - 100);
-  $scope.inventory_toolbox.items.push(new models.Device(0, 'Router6', 0, 0, 'router'));
-  $scope.inventory_toolbox.items.push(new models.Device(0, 'Switch6', 0, 0, 'switch'));
-  $scope.inventory_toolbox.items.push(new models.Device(0, 'Host6', 0, 0, 'host'));
-  $scope.inventory_toolbox.items.push(new models.Device(0, 'Router7', 0, 0, 'router'));
-  $scope.inventory_toolbox.items.push(new models.Device(0, 'Router8', 0, 0, 'router'));
-  $scope.inventory_toolbox.items.push(new models.Device(0, 'Router9', 0, 0, 'router'));
-  $scope.inventory_toolbox.items.push(new models.Device(0, 'Router10', 0, 0, 'router'));
-  $scope.inventory_toolbox.items.push(new models.Device(0, 'Router11', 0, 0, 'router'));
-  $scope.inventory_toolbox.items.push(new models.Device(0, 'Router12', 0, 0, 'router'));
-  $scope.inventory_toolbox.items.push(new models.Device(0, 'Router13', 0, 0, 'router'));
-  $scope.inventory_toolbox.items.push(new models.Device(0, 'Router14', 0, 0, 'router'));
-  $scope.inventory_toolbox.items.push(new models.Device(0, 'Router15', 0, 0, 'router'));
-  $scope.inventory_toolbox.items.push(new models.Device(0, 'Router16', 0, 0, 'router'));
+  if (!$scope.disconnected) {
+      $http.get('/api/v2/inventories/' + $scope.inventory_id + '/hosts/?format=json')
+           .then(function(response) {
+               console.log(response);
+
+               var host = null;
+               var i = 0;
+               function add_host (response) {
+                   console.log(response);
+                   var device = new models.Device(0, response.data.name, 0, 0, response.data.type);
+                   device.icon = true;
+                   $scope.inventory_toolbox.items.push(device);
+               }
+               for (i=0; i<response.data.results.length;i++) {
+                   host = response.data.results[i];
+                   $http.get('/api/v2/hosts/'+ host.id + '/variable_data?format=json')
+                        .then(add_host);
+               }
+           });
+  }
   $scope.inventory_toolbox.spacing = 150;
   $scope.inventory_toolbox.enabled = true;
   $scope.inventory_toolbox_controller.toolbox = $scope.inventory_toolbox;
@@ -160,9 +169,6 @@ var NetworkUIController = function($scope, $document, $location, $window) {
     $scope.first_controller.handle_message("PasteDevice", new messages.PasteDevice(selected_item));
   };
 
-  for(i = 0; i < $scope.inventory_toolbox.items.length; i++) {
-      $scope.inventory_toolbox.items[i].icon = true;
-  }
   //End Inventory Toolbox Setup
   $scope.rack_toolbox_controller = new fsm.FSMController($scope, toolbox_fsm.Start, $scope.inventory_toolbox_controller);
   //Rack Toolbox Setup
@@ -1077,7 +1083,7 @@ var NetworkUIController = function($scope, $document, $location, $window) {
         $scope.link_id_seq = util.natural_numbers(data.link_id_seq);
         $scope.group_id_seq = util.natural_numbers(data.group_id_seq);
         $scope.device_id_seq = util.natural_numbers(data.device_id_seq);
-        $location.search({topology_id: data.topology_id});
+        $location.search({topology_id: data.topology_id, inventory_id: $scope.inventory_id});
     };
 
     $scope.onDeviceSelected = function(data) {
